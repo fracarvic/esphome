@@ -151,6 +151,17 @@ void LD2410Component::handle_periodic_data_(uint8_t *buffer, int len) {
   if (buffer[7] != HEAD || buffer[len - 6] != END || buffer[len - 5] != CHECK)  // Check constant values
     return;  // data head=0xAA, data end=0x55, crc=0x00
 
+#ifdef USE_BINARY_SENSOR
+  /*
+    Target states: 9th
+    0x00 = No target
+  */
+  char target_state = buffer[TARGET_STATES];
+  if (this->target_binary_sensor_ != nullptr) {
+    this->target_binary_sensor_->publish_state(target_state != 0x00);
+  }
+#endif
+  
   /*
     Reduce data update rate to prevent home assistant database size grow fast
   */
@@ -159,6 +170,21 @@ void LD2410Component::handle_periodic_data_(uint8_t *buffer, int len) {
     return;
   last_periodic_millis_ = current_millis;
 
+  /*
+    Target states: 9th
+    0x01 = Moving targets
+    0x02 = Still targets
+    0x03 = Moving+Still targets
+  */
+#ifdef USE_BINARY_SENSOR
+  if (this->moving_target_binary_sensor_ != nullptr) {
+    this->moving_target_binary_sensor_->publish_state(CHECK_BIT(target_state, 0));
+  }
+  if (this->still_target_binary_sensor_ != nullptr) {
+    this->still_target_binary_sensor_->publish_state(CHECK_BIT(target_state, 1));
+  }
+#endif
+  
   /*
     Data Type: 7th
     0x01: Engineering mode
@@ -171,25 +197,7 @@ void LD2410Component::handle_periodic_data_(uint8_t *buffer, int len) {
     this->engineering_mode_switch_->publish_state(engineering_mode);
   }
 #endif
-#ifdef USE_BINARY_SENSOR
-  /*
-    Target states: 9th
-    0x00 = No target
-    0x01 = Moving targets
-    0x02 = Still targets
-    0x03 = Moving+Still targets
-  */
-  char target_state = buffer[TARGET_STATES];
-  if (this->target_binary_sensor_ != nullptr) {
-    this->target_binary_sensor_->publish_state(target_state != 0x00);
-  }
-  if (this->moving_target_binary_sensor_ != nullptr) {
-    this->moving_target_binary_sensor_->publish_state(CHECK_BIT(target_state, 0));
-  }
-  if (this->still_target_binary_sensor_ != nullptr) {
-    this->still_target_binary_sensor_->publish_state(CHECK_BIT(target_state, 1));
-  }
-#endif
+  
   /*
     Moving target distance: 10~11th bytes
     Moving target energy: 12th byte
